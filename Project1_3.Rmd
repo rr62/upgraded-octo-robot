@@ -1,0 +1,155 @@
+---
+title: "Physical Activity Analysis"
+author: "Ram Ravichandran"
+date: "June 4, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+## Load the Activity Data
+```{r activity1}
+library("data.table")
+df <- data.table::fread(input = "activity.csv")
+```
+
+## Exploring the Data
+```{r}
+str(df)
+summary(df)
+```
+
+The dataset has 17568 observations of 3 variables: steps, date, and interval. Note that the date variable is formatted as character. The step variable in the beginning few rows seems to contain many NA values. This is likley since steps will not be taken during sleep and other periods of inactivity. For proper anlaysis, these NA values should be addressed
+
+
+## Total number of steps per day
+
+
+```{r steps}
+
+totalSteps <- df[, c(lapply(.SD, sum, na.rm = FALSE)), .SDcols = c("steps"), by = .(date)]
+head(totalSteps)
+
+```
+
+The output above shows that the total number of steps is computed for each date. The first date 2017-10-01 has NA steps due to missing values in the data for the first date,  while the second date 2017-10-02 has 126 steps.
+
+## Histogram of total number of steps per day
+```{r plot1E}
+library(ggplot2)
+ggplot(totalSteps, aes(x = steps)) +
+    geom_histogram(fill = "orange", binwidth = 2000) +
+    labs(title = "Steps per Day", x = "Number of Steps", y = "Frequency")
+```
+
+## Mean and Median Steps per day
+
+```{r meamMed}
+meanSteps <- mean(totalSteps$steps, na.rm=TRUE)
+meanSteps
+medianSteps <- median(totalSteps$steps, na.rm=TRUE)
+medianSteps
+
+```
+```{r intervalSteps}
+intervalSteps <- df[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval)] 
+
+ggplot(intervalSteps, aes(x = interval , y = steps)) + geom_line(color="red", size=1) + labs(title = "Average Steps by Day", x = "Interval", y = "Average Daily Steps")
+
+```
+
+As can be seen, the daily number of steps climber higher earlier in the day and then drops off toward the end.
+
+## Average Daily Activity pattern
+
+```{r HighestInterval}
+intervalSteps[steps == max(steps), .(highestInterval = interval)]
+
+```
+
+Interval 835 has the maximum number of steps.
+
+## Imputing Missing Values
+
+```{r}
+missingSteps <- nrow(df[is.na(steps),])
+missingSteps
+
+```
+
+There are `r missingSteps` missing steps. 
+
+## Imputed Dataset
+
+A simple stratgey of replacing all missing steps with the mean value of steps will be used.
+
+```{r}
+dfImputedMean<- df
+dfImputedMean[is.na(steps), "steps"] <- dfImputedMean[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps")]
+```
+
+## Histogram with Imputed Values
+```{r}
+totalStepsImputedMean <- dfImputedMean[, c(lapply(.SD, sum, na.rm = FALSE)), .SDcols = c("steps"), by = .(date)]
+ggplot(totalStepsImputedMean, aes(x = steps)) +
+    geom_histogram(fill = "orange", binwidth = 2000) +
+    labs(title = "Steps per Day (Imputed Dataset)", x = "Number of Steps ", y = "Frequency")
+```
+
+## Difference between Original and Imputed Dataset
+
+````{r}
+meanStepsImputedMean <-  mean(totalStepsImputedMean$steps, na.rm=TRUE)
+meanStepsImputedMean
+
+medianStepsImputedMean <-  median(totalStepsImputedMean$steps, na.rm=TRUE)
+medianStepsImputedMean
+
+
+Mean <-   c(meanSteps,   meanStepsImputedMean )
+Median <- c(medianSteps, medianStepsImputedMean)
+DataSet <- c("Data with Missing Values", "Data with Imputed Values")
+df_m <- data.frame(DataSet, Mean, Median)
+df_m
+
+```
+
+When the Imputed values are substituted, both the mean and median values go down.
+
+
+## Weekdays vs Weekends
+
+### Set up a Variable to Handle Weekday vs Weekend
+```{r}
+# Use the dataset with the imputed values
+dfI <- dfImputedMean 
+# create a new variable called dayType
+# format date variable as Date
+dfI[, date := as.POSIXct(date, format= "%Y-%m-%d")]
+# derive WeekDay from date 
+dfI[, `weekDay`:= weekdays(x = date)]
+# derive DayType from WeekDay and set up as a factor
+dfI[grepl(pattern = "Saturday|Sunday", x = `weekDay`), "dayType"] <- "weekend"
+dfI[grepl(pattern = "Monday|Tuesday|Wednesday|Thursday|Friday", x = `weekDay`), "dayType"] <- "weekday"
+dfI[, `dayType` := as.factor(`dayType`)]
+# show sample rows with dayType change over 
+s <- dfI[5470:5475]
+s
+
+```
+
+As we can see above, when the Week day changes from Friday to Saturday, the dayType changes from weekday to weekend.
+
+### Activity Differences between the work week and the weekend. 
+
+```{r}
+intervalStepsI <- dfI[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval, `dayType`)] 
+
+ggplot(intervalStepsI , aes(x = interval , y = steps, color=`dayType`)) + geom_line() + labs(title = "Average Daily Steps by dayType (Imputed Dataset)", x = "Interval", y = "Number of Steps") + facet_wrap(~`dayType` , ncol = 1, nrow=2)
+
+
+```
+
+The above panel shows different patterns of activity between weekday and weekends.
